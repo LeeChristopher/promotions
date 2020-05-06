@@ -1,2 +1,2 @@
-# promotions
-promotions
+# templeteForApi
+templeteForApi
