@@ -9,9 +9,9 @@ type PromotionTool struct {
 	PromotionalId           uint64    `json:"promotional_id"`
 	PromotionalName         string    `json:"promotional_name"`
 	RuleDesc                string    `json:"rule_desc"`
-	IsOnline                uint8     `json:"is_online"`
+	MarketingPlatform       uint8     `json:"marketing_platform"`
 	IsAutoCompute           uint8     `json:"is_auto_compute"`
-	IsOnlyMember            uint8     `json:"is_only_member"`
+	MarketingMember         uint8     `json:"marketing_member"`
 	LimitNew                uint8     `json:"limit_new"`
 	LimitBuy                uint8     `json:"limit_buy"`
 	LimitValue              uint32    `json:"limit_value"`
@@ -36,8 +36,8 @@ type RequestPromotionParam struct {
 	Platform    string
 	ProductList []*promotionProduct.RequestPromotionProduct
 	IsNewMember uint8
-	Freight     uint64
-	FreightCost uint64
+	Freight     float64
+	FreightCost float64
 }
 
 type ResponsePromotionDiscount struct {
@@ -87,7 +87,7 @@ func GetTableName() string {
 
 func GetField() []string {
 	return []string{
-		"promotional_id", "promotional_name", "rule_desc", "is_online", "is_auto_compute", "is_only_member", "limit_new", "limit_buy", "limit_value", "start_time", "end_time",
+		"promotional_id", "promotional_name", "rule_desc", "marketing_platform", "is_auto_compute", "marketing_member", "limit_new", "limit_buy", "limit_value", "start_time", "end_time",
 		"is_repeat", "promotional_type_id", "promotional_type_category", "conditions", "priority_index", "is_exclusive", "product_range_type", "product_range_value", "status", "created_at",
 	}
 }

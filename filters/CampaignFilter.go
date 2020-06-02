@@ -21,7 +21,7 @@ func NewCampaignFilter(request *http.Request) *CampaignFilter {
 	return &CampaignFilter{Request: request}
 }
 
-func (m *CampaignFilter) GetDiscountList() (list []string, err error) {
+func (m *CampaignFilter) GetDiscountList() (result *services.ResponseDiscountList, err error) {
 	businessKey := m.Request.FormValue("business_key")
 	memberId := m.Request.FormValue("member_id")
 	platform := m.Request.FormValue("platform")
@@ -41,14 +41,14 @@ func (m *CampaignFilter) GetDiscountList() (list []string, err error) {
 	valid.Required(isNewMember, "is_new_member").Message("请提交用户新旧信息！")
 	valid.Match(isNewMember, regexp.MustCompile(`^1|2$`), "is_new_member").Message("用户新旧信息格式错误！")
 	valid.Required(freight, "freight").Message("请提交运费信息！")
-	valid.Match(freight, regexp.MustCompile(`^[0-9]$`), "freight").Message("运费信息格式错误！")
+	valid.Match(freight, regexp.MustCompile(`^[0-9]*$`), "freight").Message("运费信息格式错误！")
 	valid.Required(freightCost, "freight_cost").Message("请提交运费门槛信息！")
-	valid.Match(freightCost, regexp.MustCompile(`^[1-9][0-9]*$`), "freight_cost").Message("运费门槛信息格式错误！")
+	valid.Match(freightCost, regexp.MustCompile(`^[0-9]*$`), "freight_cost").Message("运费门槛信息格式错误！")
 	if valid.HasErrors() {
 		return nil, valid.Errors[0]
 	}
 
-	cartProductList := make([]*promotionProduct.RequestPromotionProduct, 0, 32)
+	cartProductList := make([]*promotionProduct.RequestPromotionProduct, 0, 16)
 	err = json.Unmarshal([]byte(productList), &cartProductList)
 	if err != nil {
 		return nil, errors.New("商品信息格式错误！")
@@ -71,8 +71,8 @@ func (m *CampaignFilter) GetDiscountList() (list []string, err error) {
 	}
 	memberUint := uint64(memberIdInt)
 	isNewMemberUint := uint8(isNewMemberInt)
-	freightUint := uint64(freightInt)
-	freightCostUint := uint64(freightCostInt)
+	freightUint := float64(freightInt)
+	freightCostUint := float64(freightCostInt)
 
 	requestPromotionParam := &promotionTool.RequestPromotionParam{
 		BusinessKey: businessKey,
@@ -84,7 +84,10 @@ func (m *CampaignFilter) GetDiscountList() (list []string, err error) {
 		FreightCost: freightCostUint,
 	}
 	campaignService := services.NewCampaign(requestPromotionParam)
-	list, err = campaignService.GetDiscountList()
+	result, err = campaignService.GetDiscountList()
+	if err != nil {
+		return nil, err
+	}
 
-	return list, nil
+	return result, nil
 }

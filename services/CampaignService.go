@@ -9,33 +9,38 @@ import (
 	"promotions/packages/connection"
 	"promotions/packages/tools"
 	"sort"
+
+	"github.com/shopspring/decimal"
 )
 
 type CampaignService struct {
-	RequestParam         *promotionTool.RequestPromotionParam
-	CampaignProductMap   map[uint64][]*promotionProduct.PromotionProduct
-	CartProductInfoMap   map[uint64]*product.PromotionProductInfo
-	ResponseDiscountList *ResponseDiscountList
-	TotalDiscount        float64
-	PromotionDiscount    float64
-	ProductDiscount      []*product.ResponseProductDiscount
-	PromotionList        []*promotionTool.ResponsePromotionList
+	RequestParam          *promotionTool.RequestPromotionParam
+	CampaignProductMap    map[uint64][]*promotionProduct.PromotionProduct
+	CartProductInfoMap    map[uint64]*product.PromotionProductInfo
+	ResponseDiscountList  *ResponseDiscountList
+	TotalDiscount         float64
+	PromotionDiscount     float64
+	ProductDiscountIdList []uint64
+	ProductDiscount       []*product.ResponseProductDiscount
+	PromotionList         []*promotionTool.ResponsePromotionList
+	TotalPrice            float64
 }
 
 func NewCampaign(requestParam *promotionTool.RequestPromotionParam) *CampaignService {
 	return &CampaignService{
-		RequestParam:       requestParam,
-		CampaignProductMap: make(map[uint64][]*promotionProduct.PromotionProduct, 32),
-		CartProductInfoMap: make(map[uint64]*product.PromotionProductInfo, 32),
-		ProductDiscount:    make([]*product.ResponseProductDiscount, 0, 16),
-		PromotionList:      make([]*promotionTool.ResponsePromotionList, 0, 16),
+		RequestParam:          requestParam,
+		CampaignProductMap:    make(map[uint64][]*promotionProduct.PromotionProduct, 32),
+		CartProductInfoMap:    make(map[uint64]*product.PromotionProductInfo, 32),
+		ProductDiscount:       make([]*product.ResponseProductDiscount, 0, 16),
+		PromotionList:         make([]*promotionTool.ResponsePromotionList, 0, 16),
+		ProductDiscountIdList: make([]uint64, 0, 8),
 	}
 }
 
-func (m *CampaignService) GetDiscountList() (list []string, err error) {
+func (m *CampaignService) GetDiscountList() (result *ResponseDiscountList, err error) {
 	businessInfo := &merchant.Merchant{}
 	err = connection.Db.Table(merchant.GetTableName()).Select("business_id").
-		Where("business_key = ?", m.RequestParam.BusinessKey).
+		Where("business_key = ? AND status = ?", m.RequestParam.BusinessKey, 1).
 		Find(businessInfo).Error
 	if err != nil {
 		return nil, errors.New("商户未找到！")
@@ -60,8 +65,8 @@ func (m *CampaignService) GetDiscountList() (list []string, err error) {
 		return nil, err
 	}
 
-	//验证商品是否是活动商品
-	err = GetValidPromotionProduct(&promotionToolList, &promotionToolIdList, m.RequestParam.ProductList, &m.CampaignProductMap, m.RequestParam.BusinessId, &m.CartProductInfoMap)
+	//验证商品是否是活动商品 获取到的信息:活动下的商品信息  商品信息
+	m.TotalPrice, err = GetValidPromotionProduct(&promotionToolList, &promotionToolIdList, m.RequestParam.ProductList, &m.CampaignProductMap, m.RequestParam.BusinessId, &m.CartProductInfoMap)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +76,9 @@ func (m *CampaignService) GetDiscountList() (list []string, err error) {
 
 	m.campaignPartitionCompute(promotionToolList, promotionToolIdList)
 
-	return nil, nil
+	result = m.buildUpResponse()
+
+	return result, nil
 }
 
 func (m *CampaignService) campaignPartitionCompute(promotionToolList []*promotionTool.PromotionTool, promotionToolIdList []uint64) {
@@ -115,16 +122,19 @@ func (m *CampaignService) limitedTimeDown(promotionToolInfo *promotionTool.Promo
 			}
 			*processedProductIdList = append(*processedProductIdList, campaignProductList[i].ProductId)
 
-			singleDiscount := m.CartProductInfoMap[campaignProductList[i].ProductId].SalePrice - campaignProductList[i].Price
-			discount := singleDiscount * float64(m.RequestParam.ProductList[k].Quantity)
-			m.CartProductInfoMap[campaignProductList[i].ProductId].SalePrice = campaignProductList[i].Price
-
-			m.setResponseProductDiscount(campaignProductList[i].ProductId, discount, singleDiscount, promotionToolInfo)
+			var singleDiscountDecimal decimal.Decimal
+			singleDiscountDecimal = decimal.NewFromFloat(m.CartProductInfoMap[campaignProductList[i].ProductId].SalePrice).Sub(decimal.NewFromFloat(campaignProductList[i].PromotionPrice))
+			discount := singleDiscountDecimal.Mul(decimal.NewFromFloat(float64(m.RequestParam.ProductList[k].Quantity)))
+			m.CartProductInfoMap[campaignProductList[i].ProductId].SalePrice = campaignProductList[i].PromotionPrice
+			m.setResponseProductDiscount(campaignProductList[i].ProductId, discount, campaignProductList[i].PromotionPrice, promotionToolInfo)
 		}
 	}
 }
 
 func (m *CampaignService) setResponsePromotionList(promotionToolList []*promotionTool.PromotionTool) {
+	if len(promotionToolList) == 0 {
+		return
+	}
 	for i := range promotionToolList {
 		responsePromotionList := promotionTool.ResponsePromotionList{}
 		responsePromotionList.PromotionalId = promotionToolList[i].PromotionalId
@@ -135,33 +145,34 @@ func (m *CampaignService) setResponsePromotionList(promotionToolList []*promotio
 	}
 }
 
-func (m *CampaignService) setResponseProductDiscount(productId uint64, discount float64, cartPrice float64, promotionInfo *promotionTool.PromotionTool) {
-	productDiscountLen := len(m.ProductDiscount)
+func (m *CampaignService) setResponseProductDiscount(productId uint64, discountDecimal decimal.Decimal, cartPrice float64, promotionInfo *promotionTool.PromotionTool) {
+	discountFloat, _ := discountDecimal.Float64()
 	responseProductDiscount := product.ResponseProductDiscount{}
-	if productDiscountLen > 0 {
+	if tools.InUint64(productId, m.ProductDiscountIdList) {
 		for i := range m.ProductDiscount {
 			if m.ProductDiscount[i].ProductId != productId {
 				continue
 			}
 			responseProductDiscount.CartPrice = cartPrice
-			responseProductDiscount.TotalDiscount = responseProductDiscount.TotalDiscount + discount
+			responseProductDiscount.TotalDiscount, _ = decimal.NewFromFloat(responseProductDiscount.TotalDiscount).Add(discountDecimal).Float64()
 			responseProductDiscount.Promotions = append(responseProductDiscount.Promotions, &promotionTool.ResponsePromotionDiscount{
 				PromotionalId:   promotionInfo.PromotionalId,
 				PromotionalName: promotionInfo.PromotionalName,
-				Discount:        discount,
+				Discount:        discountFloat,
 			})
 		}
 	} else {
 		responsePromotionDiscount := make([]*promotionTool.ResponsePromotionDiscount, 0, 16)
 		responseProductDiscount.ProductId = productId
 		responseProductDiscount.CartPrice = cartPrice
-		responseProductDiscount.TotalDiscount = discount
-		responsePromotionDiscount = append(responseProductDiscount.Promotions, &promotionTool.ResponsePromotionDiscount{
+		responseProductDiscount.TotalDiscount = discountFloat
+		responsePromotionDiscount = append(responsePromotionDiscount, &promotionTool.ResponsePromotionDiscount{
 			PromotionalId:   promotionInfo.PromotionalId,
 			PromotionalName: promotionInfo.PromotionalName,
-			Discount:        discount,
+			Discount:        discountFloat,
 		})
 		responseProductDiscount.Promotions = responsePromotionDiscount
+		m.ProductDiscountIdList = append(m.ProductDiscountIdList, productId)
 	}
 	m.ProductDiscount = append(m.ProductDiscount, &responseProductDiscount)
 
@@ -170,12 +181,30 @@ func (m *CampaignService) setResponseProductDiscount(productId uint64, discount 
 			continue
 		}
 		m.PromotionList[i].MatchStatus = 1
-		m.PromotionList[i].Discount = m.PromotionList[i].Discount + discount
+		m.PromotionList[i].Discount, _ = decimal.NewFromFloat(m.PromotionList[i].Discount).Add(discountDecimal).Float64()
 		m.PromotionList[i].MatchProducts = append(m.PromotionList[i].MatchProducts, &promotionTool.ResponseMatchProduct{
 			ProductId: productId,
-			Discount:  discount,
+			Discount:  discountFloat,
 		})
 	}
-	m.TotalDiscount = m.TotalDiscount + discount
-	m.PromotionDiscount = m.PromotionDiscount + discount
+	m.TotalDiscount, _ = decimal.NewFromFloat(m.TotalDiscount).Add(discountDecimal).Float64()
+	m.PromotionDiscount, _ = decimal.NewFromFloat(m.PromotionDiscount).Add(discountDecimal).Float64()
+}
+
+func (m *CampaignService) buildUpResponse() (result *ResponseDiscountList) {
+	shouldPayment, _ := decimal.NewFromFloat(m.TotalPrice).Sub(decimal.NewFromFloat(m.TotalDiscount)).Float64()
+	freight := m.RequestParam.Freight
+	if shouldPayment > m.RequestParam.FreightCost {
+		freight = 0
+	}
+
+	return &ResponseDiscountList{
+		TotalDiscount:     m.TotalDiscount,
+		PromotionDiscount: m.PromotionDiscount,
+		CouponDiscount:    0,
+		ProductDiscount:   m.ProductDiscount,
+		PromotionList:     m.PromotionList,
+		Freight:           freight,
+		ShouldPayment:     shouldPayment,
+	}
 }

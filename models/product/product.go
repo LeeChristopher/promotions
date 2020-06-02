@@ -8,15 +8,15 @@ type Product struct {
 
 type PromotionProductInfo struct {
 	ProductId     uint64  `json:"product_id"`
-	ProductCnName string  `json:"product_name"`
+	ChannelCnName string  `json:"product_name"`
 	SalePrice     float64 `json:"sale_price"`
 }
 
 type ResponseProductDiscount struct {
-	ProductId     uint64  `json:"product_id"`
-	TotalDiscount float64 `json:"total_discount"`
-	CartPrice     float64 `json:"cart_price"`
-	Promotions    []*promotionTool.ResponsePromotionDiscount
+	ProductId     uint64                                     `json:"product_id"`
+	TotalDiscount float64                                    `json:"total_discount"`
+	CartPrice     float64                                    `json:"cart_price"`
+	Promotions    []*promotionTool.ResponsePromotionDiscount `json:"promotions"`
 }
 
 func GetTableName() string {

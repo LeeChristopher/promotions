@@ -1,15 +1,15 @@
 package promotionProduct
 
 type PromotionProduct struct {
-	Id            uint64  `json:"id"`
-	PromotionalId uint64  `json:"promotional_id"`
-	IsAdd         uint8   `json:"is_add"`
-	ProductId     uint64  `json:"product_id"`
-	StockLimit    uint8   `json:"stock_limit"`
-	Stock         uint64  `json:"stock"`
-	Price         float64 `json:"price"`
-	Discount      float64 `json:"discount"`
-	ChannelId     uint64  `json:"channel_id"`
+	Id             uint64  `json:"id"`
+	PromotionalId  uint64  `json:"promotional_id"`
+	IsAdd          uint8   `json:"is_add"`
+	ProductId      uint64  `json:"product_id"`
+	StockLimit     uint8   `json:"stock_limit"`
+	Stock          uint64  `json:"stock"`
+	PromotionPrice float64 `json:"promotion_price"`
+	Discount       float64 `json:"discount"`
+	ChannelId      uint64  `json:"channel_id"`
 }
 
 type RequestPromotionBaseProduct struct {
@@ -31,6 +31,6 @@ func GetTableName() string {
 
 func GetField() []string {
 	return []string{
-		"id", "promotional_id", "is_add", "product_id", "stock_limit", "stock", "price", "discount", "channel_id",
+		"id", "promotional_id", "is_add", "product_id", "stock_limit", "stock", "promotion_price", "discount", "channel_id",
 	}
 }

@@ -10,10 +10,13 @@ import (
 	"promotions/models/promotionProduct"
 	"promotions/models/promotionRepeat"
 	"promotions/models/promotionTool"
+	"promotions/models/selfProduct"
 	"promotions/packages/connection"
 	"promotions/packages/tools"
 	"strconv"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 type ResponseDiscountList struct {
@@ -30,7 +33,7 @@ func GetValidCampaign(businessId uint64, memberId uint64, isNewMember uint8) (pr
 	nowTimeUnix := tools.GetNow().Unix()
 
 	promotionToolList = make([]*promotionTool.PromotionTool, 0, 32)
-	query := connection.Db.Table(promotionTool.GetTableName()).Select(promotionTool.GetTableName()).
+	query := connection.Db.Table(promotionTool.GetTableName()).Select(promotionTool.GetField()).
 		Where("start_time <= ? AND end_time >= ? AND marketing_platform = ? AND business_id = ? AND status = ?", nowTimeUnix, nowTimeUnix, 1, businessId, 2)
 	if memberId == 0 {
 		query = query.Where("marketing_member = ?", 1)
@@ -83,7 +86,7 @@ func GetValidCampaign(businessId uint64, memberId uint64, isNewMember uint8) (pr
 
 func getSmallTimeValidCampaign(repeatPromotionIdList []uint64, repeatPromotionIdListLen int) (validRepeatPromotionIdList []uint64, err error) {
 	promotionRepeatList := make([]*promotionRepeat.PromotionRepeat, 0, repeatPromotionIdListLen)
-	err = connection.Db.Table(promotionRepeat.GetTableName()).Select(promotionRepeat.GetTableName()).
+	err = connection.Db.Table(promotionRepeat.GetTableName()).Select(promotionRepeat.GetField()).
 		Where("object_id in (?) AND marketing_type = ?", repeatPromotionIdList, 1).
 		Find(&promotionRepeatList).Error
 	if err != nil {
@@ -97,11 +100,11 @@ func getSmallTimeValidCampaign(repeatPromotionIdList []uint64, repeatPromotionId
 	location, _ := time.LoadLocation(tools.LOCATION)
 	validRepeatPromotionIdList = make([]uint64, 0, repeatPromotionIdListLen)
 	for i := range promotionRepeatList {
-		startTime, err := time.ParseInLocation(tools.DATATIME_FORMART, fmt.Sprintf("%s %s:00", nowDate, promotionRepeatList[i].StartHour), location)
+		startTime, err := time.ParseInLocation(tools.DATATIME_FORMART, fmt.Sprintf("%s %s", nowDate, promotionRepeatList[i].StartHour), location)
 		if err != nil {
 			return nil, err
 		}
-		endTime, err := time.ParseInLocation(tools.DATATIME_FORMART, fmt.Sprintf("%s %s:59", nowDate, promotionRepeatList[i].EndHour), location)
+		endTime, err := time.ParseInLocation(tools.DATATIME_FORMART, fmt.Sprintf("%s %s", nowDate, promotionRepeatList[i].EndHour), location)
 		if err != nil {
 			return nil, err
 		}
@@ -135,8 +138,8 @@ func GetValidMemberLevel(promotionToolList *[]*promotionTool.PromotionTool, prom
 	validPromotionList := make([]*promotionTool.PromotionTool, 0, promotionToolListLen)
 	validPromotionIdList := make([]uint64, 0, promotionToolListLen)
 	defer func() {
-		promotionToolList = &validPromotionList
-		promotionToolIdList = &validPromotionIdList
+		*promotionToolList = validPromotionList
+		*promotionToolIdList = validPromotionIdList
 	}()
 	if promotionToolListLen == 0 {
 		return
@@ -144,7 +147,7 @@ func GetValidMemberLevel(promotionToolList *[]*promotionTool.PromotionTool, prom
 
 	needMemberLevelCampaignIdList := make([]uint64, 0, promotionToolListLen)
 	for i := range *promotionToolList {
-		if (*promotionToolList)[i].IsOnlyMember == 2 {
+		if (*promotionToolList)[i].MarketingMember == 2 {
 			needMemberLevelCampaignIdList = append(needMemberLevelCampaignIdList, (*promotionToolList)[i].PromotionalId)
 			continue
 		}
@@ -176,7 +179,7 @@ func GetValidMemberLevel(promotionToolList *[]*promotionTool.PromotionTool, prom
 	}
 
 	for i := range *promotionToolList {
-		if (*promotionToolList)[i].IsOnlyMember == 1 {
+		if (*promotionToolList)[i].MarketingMember == 1 {
 			continue
 		}
 		levelIdList, ok := promotionIdLevelMap[(*promotionToolList)[i].PromotionalId]
@@ -197,7 +200,7 @@ func GetValidPlatform(promotionToolList *[]*promotionTool.PromotionTool, promoti
 	promotionToolLen := len(*promotionToolIdList)
 	promotionPlatformList := make([]*promotionPlatform.PromotionPlatform, 0, promotionToolLen)
 	err = connection.Db.Table(promotionPlatform.GetTableName()).Select(promotionPlatform.GetField()).
-		Where("object_id in (?) AND marketing_type = ?", *promotionToolIdList, 1).
+		Where("object_id in (?) AND marketing_type = ? AND platform_type = ?", *promotionToolIdList, 1, 1).
 		Find(&promotionPlatformList).Error
 	if err != nil {
 		return errors.New("出错了！")
@@ -206,8 +209,8 @@ func GetValidPlatform(promotionToolList *[]*promotionTool.PromotionTool, promoti
 	validPromotionIdList := make([]uint64, 0, promotionToolLen)
 	validPromotionList := make([]*promotionTool.PromotionTool, 0, promotionToolLen)
 	defer func() {
-		promotionToolList = &validPromotionList
-		promotionToolIdList = &validPromotionIdList
+		*promotionToolList = validPromotionList
+		*promotionToolIdList = validPromotionIdList
 	}()
 
 	promotionIdPlatformMap := make(map[uint64][]string, promotionToolLen)
@@ -236,26 +239,27 @@ func GetValidPlatform(promotionToolList *[]*promotionTool.PromotionTool, promoti
 	return nil
 }
 
-func GetValidPromotionProduct(promotionToolList *[]*promotionTool.PromotionTool, promotionToolIdList *[]uint64, cartProductList []*promotionProduct.RequestPromotionProduct, campaignProductMap *map[uint64][]*promotionProduct.PromotionProduct, businessId uint64, cartProductInfoMap *map[uint64]*product.PromotionProductInfo) (err error) {
+func GetValidPromotionProduct(promotionToolList *[]*promotionTool.PromotionTool, promotionToolIdList *[]uint64, cartProductList []*promotionProduct.RequestPromotionProduct, campaignProductMap *map[uint64][]*promotionProduct.PromotionProduct, businessId uint64, cartProductInfoMap *map[uint64]*product.PromotionProductInfo) (totalPrice float64, err error) {
 	promotionToolLen := len(*promotionToolIdList)
 	validPromotionIdList := make([]uint64, 0, promotionToolLen)
 	validPromotionList := make([]*promotionTool.PromotionTool, 0, promotionToolLen)
 	campaignProductMapList := make(map[uint64][]*promotionProduct.PromotionProduct, promotionToolLen)
 	defer func() {
-		promotionToolList = &validPromotionList
-		promotionToolIdList = &validPromotionIdList
-		campaignProductMap = &campaignProductMapList
+		*promotionToolList = validPromotionList
+		*promotionToolIdList = validPromotionIdList
+		*campaignProductMap = campaignProductMapList
 	}()
 
 	promotionProductList := make([]*promotionProduct.PromotionProduct, 0, promotionToolLen)
 	err = connection.Db.Table(promotionProduct.GetTableName()).Select(promotionProduct.GetField()).
-		Where("promotional_id in (?) AND channel_id = ?", promotionToolIdList, 1).
+		Where("promotional_id in (?) AND channel_id = ?", *promotionToolIdList, 1).
 		Find(&promotionProductList).Error
 	if err != nil {
-		return errors.New("出错了！")
+		return 0, errors.New("出错了！")
 	}
 
 	cartProductIdList := make([]uint64, 0, len(cartProductList))
+	relatedPromotionIdList := make([]uint64, 0, promotionToolLen)
 	for i := range cartProductList {
 		cartProductIdList = append(cartProductIdList, cartProductList[i].ProductId)
 	}
@@ -270,25 +274,35 @@ func GetValidPromotionProduct(promotionToolList *[]*promotionTool.PromotionTool,
 			promotionProductInfoList = append(promotionProductInfoList, promotionProductList[i])
 			campaignProductMapList[promotionProductList[i].PromotionalId] = promotionProductInfoList
 		}
-		if tools.InUint64(promotionProductList[i].PromotionalId, validPromotionIdList) {
+		if tools.InUint64(promotionProductList[i].PromotionalId, relatedPromotionIdList) {
 			continue
 		}
 
+		relatedPromotionIdList = append(relatedPromotionIdList, promotionProductList[i].PromotionalId)
+	}
+	for i := range *promotionToolList {
+		if !tools.InUint64((*promotionToolList)[i].PromotionalId, relatedPromotionIdList) {
+			continue
+		}
 		validPromotionList = append(validPromotionList, (*promotionToolList)[i])
 		validPromotionIdList = append(validPromotionIdList, (*promotionToolList)[i].PromotionalId)
 	}
+
 	//获取到商品信息
 	cartProductIdListLen := len(cartProductIdList)
 	productInfoList := make([]*product.PromotionProductInfo, 0, cartProductIdListLen)
-	err = connection.Db.Table(product.GetTableName()).Select(product.GetField()).
-		Where("business_id = ? AND product_id in (?)", businessId, cartProductIdList).
+	err = connection.Db.Table(selfProduct.GetTableName()).Select(selfProduct.GetField()).
+		Where("business_id = ? AND product_id in (?) AND status = ?", businessId, cartProductIdList, 1).
 		Find(&productInfoList).Error
 	if err != nil {
-		return errors.New("提交商品可能不存在或未上架！")
+		return 0, errors.New("选购商品未上架或商品库不存在！")
 	}
+	var totalPriceDecimal decimal.Decimal
 	for i := range productInfoList {
 		(*cartProductInfoMap)[productInfoList[i].ProductId] = productInfoList[i]
+		totalPriceDecimal = decimal.NewFromFloat(0).Add(decimal.NewFromFloat(productInfoList[i].SalePrice))
 	}
+	totalPrice, _ = totalPriceDecimal.Float64()
 
-	return nil
+	return totalPrice, nil
 }

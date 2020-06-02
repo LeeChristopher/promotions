@@ -3,8 +3,9 @@ package tools
 import "strings"
 
 var noSignUrl = map[string]bool{
-	"/login":    true,
-	"/register": true,
+	"/login":     true,
+	"/register":  true,
+	"/promotion": true,
 }
 
 func GetIsSign(url string) bool {
