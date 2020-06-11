@@ -199,6 +199,7 @@ func (m *CampaignService) buildUpResponse() (result *ResponseDiscountList) {
 	}
 
 	return &ResponseDiscountList{
+		TotalPrice:        m.TotalPrice,
 		TotalDiscount:     m.TotalDiscount,
 		PromotionDiscount: m.PromotionDiscount,
 		CouponDiscount:    0,

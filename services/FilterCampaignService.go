@@ -20,6 +20,7 @@ import (
 )
 
 type ResponseDiscountList struct {
+	TotalPrice        float64                                `json:"total_price"`
 	TotalDiscount     float64                                `json:"total_discount"`
 	PromotionDiscount float64                                `json:"promotion_discount"`
 	CouponDiscount    float64                                `json:"coupon_discount"`
@@ -162,7 +163,7 @@ func GetValidMemberLevel(promotionToolList *[]*promotionTool.PromotionTool, prom
 	var userLevel uint32 = 1
 	promotionMemberList := make([]promotionMember.PromotionMember, 0, 32)
 	err = connection.Db.Table(promotionMember.GetTableName()).Select(promotionMember.GetField()).
-		Where("object_id in (?) marketing_type = ?", needMemberLevelCampaignIdList, 1).
+		Where("object_id in (?) AND marketing_type = ?", needMemberLevelCampaignIdList, 1).
 		Find(&promotionMemberList).Error
 	if err != nil {
 		return errors.New("出错了！")
@@ -258,10 +259,13 @@ func GetValidPromotionProduct(promotionToolList *[]*promotionTool.PromotionTool,
 		return 0, errors.New("出错了！")
 	}
 
-	cartProductIdList := make([]uint64, 0, len(cartProductList))
+	cartProductLen := len(cartProductList)
+	cartProductIdList := make([]uint64, 0, cartProductLen)
 	relatedPromotionIdList := make([]uint64, 0, promotionToolLen)
+	cartProductIdQuantityMap := make(map[uint64]uint64, cartProductLen)
 	for i := range cartProductList {
 		cartProductIdList = append(cartProductIdList, cartProductList[i].ProductId)
+		cartProductIdQuantityMap[cartProductList[i].ProductId] = cartProductList[i].Quantity
 	}
 	for i := range promotionProductList {
 		if !tools.InUint64(promotionProductList[i].ProductId, cartProductIdList) {
@@ -300,7 +304,7 @@ func GetValidPromotionProduct(promotionToolList *[]*promotionTool.PromotionTool,
 	var totalPriceDecimal decimal.Decimal
 	for i := range productInfoList {
 		(*cartProductInfoMap)[productInfoList[i].ProductId] = productInfoList[i]
-		totalPriceDecimal = decimal.NewFromFloat(0).Add(decimal.NewFromFloat(productInfoList[i].SalePrice))
+		totalPriceDecimal = decimal.NewFromFloat(productInfoList[i].SalePrice).Mul(decimal.NewFromFloat(float64(cartProductIdQuantityMap[productInfoList[i].ProductId]))).Add(totalPriceDecimal)
 	}
 	totalPrice, _ = totalPriceDecimal.Float64()
 
