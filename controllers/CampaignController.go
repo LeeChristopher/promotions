@@ -24,3 +24,13 @@ func (m *CampaignController) GetDiscountList() {
 
 	m.SetResponse(tools.CodeMap["success"], "", list)
 }
+
+func (m *CampaignController) GetProductPromotionPrice() {
+	list, err := campaignFilter.GetProductPromotionPrice()
+	if err != nil {
+		m.SetResponse(tools.CodeMap["fail"], err.Error(), nil)
+		return
+	}
+
+	m.SetResponse(tools.CodeMap["success"], "", list)
+}

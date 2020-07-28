@@ -9,6 +9,7 @@ import (
 	"promotions/services"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/astaxie/beego/validation"
 )
@@ -29,6 +30,7 @@ func (m *CampaignFilter) GetDiscountList() (result *services.ResponseDiscountLis
 	isNewMember := m.Request.FormValue("is_new_member")
 	freight := m.Request.FormValue("freight")
 	freightCost := m.Request.FormValue("freight_cost")
+	operatingType := m.Request.FormValue("operating_type")
 
 	valid := validation.Validation{}
 	valid.Required(businessKey, "business_key").Message("请提交商户信息")
@@ -44,6 +46,9 @@ func (m *CampaignFilter) GetDiscountList() (result *services.ResponseDiscountLis
 	valid.Match(freight, regexp.MustCompile(`^[0-9]*$`), "freight").Message("运费信息格式错误！")
 	valid.Required(freightCost, "freight_cost").Message("请提交运费门槛信息！")
 	valid.Match(freightCost, regexp.MustCompile(`^[0-9]*$`), "freight_cost").Message("运费门槛信息格式错误！")
+	if len(operatingType) > 0 {
+		valid.Match(operatingType, regexp.MustCompile(`^1$`), "operating_type").Message("类型信息错误！")
+	}
 	if valid.HasErrors() {
 		return nil, valid.Errors[0]
 	}
@@ -52,6 +57,11 @@ func (m *CampaignFilter) GetDiscountList() (result *services.ResponseDiscountLis
 	err = json.Unmarshal([]byte(productList), &cartProductList)
 	if err != nil {
 		return nil, errors.New("商品信息格式错误！")
+	}
+	for k := range cartProductList {
+		if cartProductList[k].ProductId <= 0 || cartProductList[k].Quantity <= 0 {
+			return nil, errors.New("商品信息格式错误！")
+		}
 	}
 	memberIdInt, err := strconv.Atoi(memberId)
 	if err != nil {
@@ -75,13 +85,14 @@ func (m *CampaignFilter) GetDiscountList() (result *services.ResponseDiscountLis
 	freightCostUint := float64(freightCostInt)
 
 	requestPromotionParam := &promotionTool.RequestPromotionParam{
-		BusinessKey: businessKey,
-		MemberId:    memberUint,
-		Platform:    platform,
-		ProductList: cartProductList,
-		IsNewMember: isNewMemberUint,
-		Freight:     freightUint,
-		FreightCost: freightCostUint,
+		BusinessKey:   businessKey,
+		MemberId:      memberUint,
+		Platform:      platform,
+		ProductList:   cartProductList,
+		IsNewMember:   isNewMemberUint,
+		Freight:       freightUint,
+		FreightCost:   freightCostUint,
+		OperatingType: operatingType,
 	}
 	campaignService := services.NewCampaign(requestPromotionParam)
 	result, err = campaignService.GetDiscountList()
@@ -90,4 +101,45 @@ func (m *CampaignFilter) GetDiscountList() (result *services.ResponseDiscountLis
 	}
 
 	return result, nil
+}
+
+func (m *CampaignFilter) GetProductPromotionPrice() (map[uint64]float64, error) {
+	memberId := m.Request.FormValue("member_id")
+	productList := m.Request.FormValue("product_list")
+	isNewMember := m.Request.FormValue("is_new_member")
+
+	valid := validation.Validation{}
+	valid.Required(memberId, "member_id").Message("请提交用户信息")
+	valid.Match(memberId, regexp.MustCompile(`^[0-9]+$`), "member_id").Message("用户信息格式错误！")
+	valid.Required(productList, "product_list").Message("请提交商品信息")
+	//valid.Match(memberId, regexp.MustCompile(`^[1-9][0-9|,]*$`), "member_id").Message("商品信息格式错误！")
+	valid.Required(isNewMember, "is_new_member").Message("请提交用户新旧信息！")
+	valid.Match(isNewMember, regexp.MustCompile(`^1|2$`), "is_new_member").Message("用户新旧信息格式错误！")
+	if valid.HasErrors() {
+		return nil, valid.Errors[0]
+	}
+	memberIdInt, err := strconv.ParseUint(memberId, 10, 64)
+	if err != nil {
+		return nil, errors.New("用户信息格式错误！")
+	}
+	isNewMemberInt, err := strconv.Atoi(isNewMember)
+	if err != nil {
+		return nil, errors.New("用户新旧信息格式错误！")
+	}
+
+	productIdList := make([]uint64, 0, 32)
+	productList = strings.TrimSpace(productList)
+	err = json.Unmarshal([]byte(productList), &productIdList)
+	if err != nil {
+		return nil, errors.New("商品数据格式错误！")
+	}
+	result := make(map[uint64]float64, len(productIdList))
+	for k := range productIdList {
+		if productIdList[k] == 0 {
+			return nil, errors.New("商品数据格式错误！")
+		}
+		result[productIdList[k]] = 0
+	}
+
+	return services.GetProductPromotionPrice(result, memberIdInt, uint8(isNewMemberInt))
 }

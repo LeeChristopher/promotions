@@ -8,6 +8,7 @@ import (
 	"promotions/packages/connection"
 	"promotions/packages/tools"
 	_ "promotions/routers"
+	"promotions/services"
 
 	"github.com/astaxie/beego"
 	_ "github.com/jinzhu/gorm/dialects/mysql"
@@ -37,6 +38,9 @@ func main() {
 		fmt.Println(err)
 		return
 	}
+
+	//初始化服务
+	_ = services.InitPromotionStock()
 
 	//错误处理
 	beego.ErrorController(&controllers.ErrorController{})

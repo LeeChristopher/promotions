@@ -20,14 +20,15 @@ import (
 )
 
 type ResponseDiscountList struct {
-	TotalPrice        float64                                `json:"total_price"`
-	TotalDiscount     float64                                `json:"total_discount"`
-	PromotionDiscount float64                                `json:"promotion_discount"`
-	CouponDiscount    float64                                `json:"coupon_discount"`
-	ProductDiscount   []*product.ResponseProductDiscount     `json:"product_discount"`
-	PromotionList     []*promotionTool.ResponsePromotionList `json:"promotion_list"`
-	Freight           float64                                `json:"freight"`
-	ShouldPayment     float64                                `json:"should_payment"`
+	TotalPrice        float64                                     `json:"total_price"`
+	TotalDiscount     float64                                     `json:"total_discount"`
+	PromotionDiscount float64                                     `json:"promotion_discount"`
+	CouponDiscount    float64                                     `json:"coupon_discount"`
+	LimitedDownList   map[uint64]*promotionProduct.PromotionStock `json:"limited_down_list"`
+	ProductDiscount   []*product.ResponseProductDiscount          `json:"product_discount"`
+	PromotionList     []*promotionTool.ResponsePromotionList      `json:"promotion_list"`
+	Freight           float64                                     `json:"freight"`
+	ShouldPayment     float64                                     `json:"should_payment"`
 }
 
 func GetValidCampaign(businessId uint64, memberId uint64, isNewMember uint8) (promotionToolList []*promotionTool.PromotionTool, promotionToolIdList []uint64, err error) {
@@ -199,6 +200,16 @@ func GetValidMemberLevel(promotionToolList *[]*promotionTool.PromotionTool, prom
 
 func GetValidPlatform(promotionToolList *[]*promotionTool.PromotionTool, promotionToolIdList *[]uint64, platform string) (err error) {
 	promotionToolLen := len(*promotionToolIdList)
+	validPromotionIdList := make([]uint64, 0, promotionToolLen)
+	validPromotionList := make([]*promotionTool.PromotionTool, 0, promotionToolLen)
+	defer func() {
+		*promotionToolList = validPromotionList
+		*promotionToolIdList = validPromotionIdList
+	}()
+	if promotionToolLen == 0 {
+		return nil
+	}
+
 	promotionPlatformList := make([]*promotionPlatform.PromotionPlatform, 0, promotionToolLen)
 	err = connection.Db.Table(promotionPlatform.GetTableName()).Select(promotionPlatform.GetField()).
 		Where("object_id in (?) AND marketing_type = ? AND platform_type = ?", *promotionToolIdList, 1, 1).
@@ -206,13 +217,6 @@ func GetValidPlatform(promotionToolList *[]*promotionTool.PromotionTool, promoti
 	if err != nil {
 		return errors.New("出错了！")
 	}
-
-	validPromotionIdList := make([]uint64, 0, promotionToolLen)
-	validPromotionList := make([]*promotionTool.PromotionTool, 0, promotionToolLen)
-	defer func() {
-		*promotionToolList = validPromotionList
-		*promotionToolIdList = validPromotionIdList
-	}()
 
 	promotionIdPlatformMap := make(map[uint64][]string, promotionToolLen)
 	for i := range promotionPlatformList {
@@ -250,6 +254,9 @@ func GetValidPromotionProduct(promotionToolList *[]*promotionTool.PromotionTool,
 		*promotionToolIdList = validPromotionIdList
 		*campaignProductMap = campaignProductMapList
 	}()
+	if promotionToolLen == 0 {
+		return 0, nil
+	}
 
 	promotionProductList := make([]*promotionProduct.PromotionProduct, 0, promotionToolLen)
 	err = connection.Db.Table(promotionProduct.GetTableName()).Select(promotionProduct.GetField()).
@@ -303,6 +310,7 @@ func GetValidPromotionProduct(promotionToolList *[]*promotionTool.PromotionTool,
 	}
 	var totalPriceDecimal decimal.Decimal
 	for i := range productInfoList {
+		productInfoList[i].Quantity = cartProductIdQuantityMap[productInfoList[i].ProductId] //此处为扣减库存设置
 		(*cartProductInfoMap)[productInfoList[i].ProductId] = productInfoList[i]
 		totalPriceDecimal = decimal.NewFromFloat(productInfoList[i].SalePrice).Mul(decimal.NewFromFloat(float64(cartProductIdQuantityMap[productInfoList[i].ProductId]))).Add(totalPriceDecimal)
 	}

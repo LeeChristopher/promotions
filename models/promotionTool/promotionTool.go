@@ -30,14 +30,15 @@ type PromotionTool struct {
 }
 
 type RequestPromotionParam struct {
-	BusinessKey string
-	BusinessId  uint64
-	MemberId    uint64
-	Platform    string
-	ProductList []*promotionProduct.RequestPromotionProduct
-	IsNewMember uint8
-	Freight     float64
-	FreightCost float64
+	BusinessKey   string
+	BusinessId    uint64
+	MemberId      uint64
+	Platform      string
+	ProductList   []*promotionProduct.RequestPromotionProduct
+	IsNewMember   uint8
+	Freight       float64
+	FreightCost   float64
+	OperatingType string
 }
 
 type ResponsePromotionDiscount struct {

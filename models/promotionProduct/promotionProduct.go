@@ -25,6 +25,13 @@ type RequestPromotionProduct struct {
 	ProductDetail []*RequestPromotionBaseProduct `json:"product_detail"`
 }
 
+type PromotionStock struct {
+	Stock      int64  `json:"stock"`
+	StockLimit uint8  `json:"stock_limit"`
+	Success    uint8  `json:"success"`
+	ProductId  uint64 `json:"product_id"`
+}
+
 func GetTableName() string {
 	return "shop_promotional_products"
 }

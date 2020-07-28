@@ -10,6 +10,7 @@ type PromotionProductInfo struct {
 	ProductId     uint64  `json:"product_id"`
 	ChannelCnName string  `json:"product_name"`
 	SalePrice     float64 `json:"sale_price"`
+	Quantity      uint64  `json:"quantity"`
 }
 
 type ResponseProductDiscount struct {
