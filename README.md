@@ -1,2 +1,2 @@
-# templeteForApi
-templeteForApi
+# 营销系统
+此系统主要为购物车、订单等做优惠计算，目前仅实现了限时直降的优惠计算功能。
